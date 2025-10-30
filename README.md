@@ -162,3 +162,12 @@ Times are averages of 5 runs on the developer's laptop.
 - These results clearly demonstrate that once FFT kernels reach full throughput, **the GPU performance ceiling is set by memory bandwidth**, not compute.  
 - Compared to the optimized CPU FFTW (4 threads, 8.7 s at 1024²), the GPU achieves an overall **≈17× speedup**, illustrating how GPU-accelerated FFTs  
   shift the bottleneck entirely to O(N) memory-bound stages.
+
+---
+
+### 💡 Practical note
+
+These benchmarks show that **FFT itself is rarely the bottleneck** in GPU computing. Instead, **memory-bound O(N)** stages — such as element-wise arithmetic or reductions — dominate total runtime once FFT throughput saturates.
+
+In practice, this limitation can be mitigated through **kernel fusion**, which reduces redundant global-memory traffic by combining multiple operations into a single CUDA kernel.  
+For FFT workloads, NVIDIA’s [**cuFFT Callback API**](https://nw.tsuda.ac.jp/lec/cuda/doc_v9_0/pdf/CUFFT_Library.pdf) provides a built-in mechanism for this purpose.
