@@ -100,11 +100,9 @@ Times are averages of 5 runs on the developer's laptop.
 - Each value is based on averaged or representative profiling runs.  
 
 **Observation:**  
-- FFT dominates roughly 70–77% of runtime across sizes,  
-  but element-wise operations still account for 15–25%, even at 1024².  
+- FFT dominates roughly 70–77% of runtime across sizes, but element-wise operations still account for 15–25%, even at 1024².  
 - Reduction remains consistently negligible (<2%).  
-- The relative proportions change slowly with size — FFT scales as expected (O(N log N)),  
-  yet memory-bound O(N) element-wise work remains significant.
+- The relative proportions change slowly with size — FFT scales as expected (O(N log N)), yet memory-bound O(N) element-wise work remains significant.
 
 
 ### 🧪 pyFFTW (threads=1, planner=FFTW_MEASURE) – Performance Summary
@@ -124,13 +122,8 @@ Times are averages of 5 runs on the developer's laptop.
 
 **Observation:**  
 - FFTW consistently outperforms `scipy.fft` (PocketFFT) by roughly **1.7–2×** across all tested sizes.  
-- The **FFT share remains around 60 %**, indicating that even with a highly optimized FFT engine,  
-  **O(N)** element-wise operations still account for about one-third of total runtime.  
-- Reduction (sum) operations stay negligible (< 2 %).  
-- The scaling behavior (≈ ×4–5 runtime increase for each doubling of size)  
-  follows the expected *O(N log N)* trend of FFT workloads.  
-- Because `planner_effort = FFTW_MEASURE` was used, plan creation overhead was excluded from timing,  
-  and cached plans were reused across iterations.
+- The **FFT share remains around 60 %**, indicating that even with a highly optimized FFT engine, **O(N)** element-wise operations still account for about one-third of total runtime.  
+
 
 
 ### 🧪 pyFFTW (threads=4, planner=FFTW_MEASURE) – Performance Summary
@@ -151,7 +144,6 @@ Times are averages of 5 runs on the developer's laptop.
 **Observation:**  
 - At 1024², total runtime ≈ **15.9 s**, ~**1.4× faster** than the single-threaded case (22.5 s).  
 - FFT phase consumes ~8.0 s (≈ 50 %), while element-wise work already reaches **7.5 s (≈ 47 %)**—nearly equal contributions.  
-- The small residual (≈ 0.45 s) comes from reduction.  
 - This run demonstrates the classic **Amdahl’s law saturation**: even with efficient multi-threaded FFTs, the non-FFT portion (memory-bound O(N) operations) becomes the limiting factor for overall performance.
 
 
@@ -167,15 +159,11 @@ Times are averages of 5 runs on the developer's laptop.
 **Conditions:**  
 - FFT backend: `cupy.fft` (cuFFT via CuPy)  
 - Array backend: `cupy` (GPU)  
-- Device: NVIDIA GPU (cuFFT backend)  
+- Device: NVIDIA GPU RTX 4060 (cuFFT backend)  
 - Iterations: 1000  
 - Profiling via `cProfile` with synchronization after loop.
 
 **Observation:**  
-- Total runtime increases to **3.23 s** at 1024², still **5–7× faster** than optimized CPU FFT (FFTW, 4 threads).  
-- FFT: 1.50 s (≈ 47 %), Reduction: 0.85 s (≈ 26 %), Element-wise: 0.53 s (≈ 17 %).  
-- Despite the larger workload, **reduction (`cupy.sum`) remains a major bottleneck**—its cost grows almost linearly with data size, reflecting the memory-bandwidth limit of GPU global reads.  
+- reduction (`cupy.sum`) emerges as a bottleneck.
 - FFT shows good scaling with cuFFT, but further acceleration yields diminishing returns because the reduction and element-wise kernels increasingly dominate the overall runtime.  
-- This illustrates the **complete inversion of bottlenecks** compared with CPU results:  
-  while CPU time was FFT-dominated, on GPU the non-FFT components (especially reduction) govern total performance.
 
