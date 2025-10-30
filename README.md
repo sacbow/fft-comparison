@@ -165,5 +165,5 @@ Times are averages of 5 runs on the developer's laptop.
 
 **Observation:**  
 - reduction (`cupy.sum`) emerges as a bottleneck.
-- FFT shows good scaling with cuFFT, but further acceleration yields diminishing returns because the reduction and element-wise kernels increasingly dominate the overall runtime.  
+- FFT shows good scaling with cuFFT, but further acceleration yields diminishing returns because the reduction increasingly dominate the overall runtime.  
 
