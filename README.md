@@ -84,86 +84,81 @@ Times are averages of 5 runs on the developer's laptop.
 
 **Note:** Results are device-dependent and may vary on different hardware or driver configurations.
 
-### 🧪 SciPy FFT (CPU, PocketFFT) – Performance Summary
+### 🧪 SciPy FFT (CPU, PocketFFT)
 
 | Metric | 256×256 | 512×512 | 1024×1024 |
 |:--|--:|--:|--:|
-| **Total time [s]** | 1.8 | 8.4 | 42.8 |
-| **FFT share [%]** | 70 | 72 | 77 |
-| **Element-wise share [%]** | 25 | 22 | 17 |
-| **Reduction (sum) share [%]** | 1 | 1 | 1 |
+| **Total time [s]** | 0.48 | 3.78 | 19.4 |
+| **FFT share [%]** | 86 | 72 | 76 |
+| **Element-wise share [%]** | 11 | 24 | 19 |
+| **Reduction (sum) share [%]** | 3 | 2 | 1 |
 
 **Conditions:**  
-- Backend: `scipy.fft` (PocketFFT)  
-- Array backend: `numpy` (CPU)  
+- FFT backend: `scipy.fft` (PocketFFT)  
+- Array backend: `numpy` (CPU, single precision `complex64`)  
 - Iterations: 1000  
-- Each value is based on averaged or representative profiling runs.  
 
-**Observation:**  
-- FFT dominates roughly 70–77% of runtime across sizes, but element-wise operations still account for 15–25%, even at 1024².  
-- Reduction remains consistently negligible (<2%).  
-- The relative proportions change slowly with size — FFT scales as expected (O(N log N)), yet memory-bound O(N) element-wise work remains significant.
+**Observation:**   
+- FFT dominates (~70–76 %), but the O(N) element-wise portion remains a significant ~20 %.  
+- Reduction (`sum`) cost grows slowly (< 2 %).  
 
 
-### 🧪 pyFFTW (threads=1, planner=FFTW_MEASURE) – Performance Summary
+### 🧪 pyFFTW (threads=1)
 
 | Metric | 256×256 | 512×512 | 1024×1024 |
 |:--|--:|--:|--:|
-| **Total time [s]** | 1.25 | 4.90 | 22.5 |
-| **FFT share [%]** | 59 | 62 | 62 |
-| **Element-wise share [%]** | 37 | 36 | 36 |
+| **Total time [s]** | 0.59 | 2.77 | 11.8 |
+| **FFT share [%]** | 88 | 67 | 68 |
+| **Element-wise share [%]** | 10 | 31 | 30 |
 | **Reduction (sum) share [%]** | 2 | 2 | 2 |
 
 **Conditions:**  
 - FFT backend: `pyFFTW` (threads = 1, planner = `FFTW_MEASURE`)  
-- Array backend: `numpy` (CPU)  
+- Array backend: `numpy` (CPU, single precision `complex64`)  
 - Iterations: 1000  
-- Each value based on representative profiling runs.
 
 **Observation:**  
-- FFTW consistently outperforms `scipy.fft` (PocketFFT) by roughly **1.7–2×** across all tested sizes.  
-- The **FFT share remains around 60 %**, indicating that even with a highly optimized FFT engine, **O(N)** element-wise operations still account for about one-third of total runtime.  
+- Compared with `scipy.fft` (19.4 s at 1024²), pyFFTW is roughly **1.6× faster**.
+- FFTW’s plan caching and float-precision kernels clearly pay off for larger arrays, making it the most efficient CPU-based option in this benchmark.
 
 
-
-### 🧪 pyFFTW (threads=4, planner=FFTW_MEASURE) – Performance Summary
+### 🧪 pyFFTW (threads=4)
 
 | Metric | 256×256 | 512×512 | 1024×1024 |
 |:--|--:|--:|--:|
-| **Total time [s]** | 1.26 | 3.73 | 15.9 |
-| **FFT share [%]** | 63 | 53 | 50 |
-| **Element-wise share [%]** | 35 | 44 | 47 |
-| **Reduction (sum) share [%]** | 2 | 3 | 3 |
+| **Total time [s]** | 0.72 | 2.31 | 8.70 |
+| **FFT share [%]** | 89 | 60 | 56 |
+| **Element-wise share [%]** | 8 | 38 | 42 |
+| **Reduction (sum) share [%]** | 3 | 2 | 2 |
 
 **Conditions:**  
 - FFT backend: `pyFFTW` (threads = 4, planner = `FFTW_MEASURE`)  
-- Array backend: `numpy` (CPU)  
+- Array backend: `numpy` (CPU, single precision `complex64`)  
 - Iterations: 1000  
-- Each value based on representative profiling runs.
 
 **Observation:**  
-- At 1024², total runtime ≈ **15.9 s**, ~**1.4× faster** than the single-threaded case (22.5 s).  
-- FFT phase consumes ~8.0 s (≈ 50 %), while element-wise work already reaches **7.5 s (≈ 47 %)**—nearly equal contributions.  
-- This run demonstrates the classic **Amdahl’s law saturation**: even with efficient multi-threaded FFTs, the non-FFT portion (memory-bound O(N) operations) becomes the limiting factor for overall performance.
+- At 1024², total runtime ≈ **8.7 s**, giving **1.36× overall speed-up** over the 1-thread case (11.8 s).  
+- FFT time reduces to ~4.8 s (≈ 56 %), but the **O(N) element-wise step (3.6 s, 42 %)** now dominates runtime.  
 
 
-### 🧪 CuPy FFT (GPU, cuFFT) – Performance Summary
+
+### 🧪 CuPy FFT (GPU, cuFFT)
 
 | Metric | 256×256 | 512×512 | 1024×1024 |
 |:--|--:|--:|--:|
-| **Total time [s]** | 0.28 | 0.76 | 3.23 |
-| **FFT share [%]** | 51 | 50 | 47 |
-| **Element-wise share [%]** | 19 | 17 | 17 |
-| **Reduction (sum) share [%]** | 21 | 25 | 26 |
+| **Total time [s]** | 0.21 | 0.22 | 0.51 |
+| **FFT share [%]** | 61 | 62 | 26 |
+| **Element-wise share [%]** | 22 | 20 | 58 |
+| **Reduction (sum) share [%]** | 16 | 15 | 7 |
 
 **Conditions:**  
 - FFT backend: `cupy.fft` (cuFFT via CuPy)  
-- Array backend: `cupy` (GPU)  
-- Device: NVIDIA GPU RTX 4060 (cuFFT backend)  
+- Array backend: `cupy` (GPU, single precision `complex64`)  
+- Device: NVIDIA RTX 4060 Laptop GPU (CUDA 12.9, driver 576.02)  
 - Iterations: 1000  
-- Profiling via `cProfile` with synchronization after loop.
 
-**Observation:**  
-- reduction (`cupy.sum`) emerges as a bottleneck.
-- FFT shows good scaling with cuFFT, but further acceleration yields diminishing returns because the reduction increasingly dominate the overall runtime.  
-
+**Observation:**
+- At 1024², FFT time increases slightly (0.13 s) but remains just **25 % of total runtime**, while the element-wise operation now dominates (**~60 %**) due to global memory traffic.  
+- These results clearly demonstrate that once FFT kernels reach full throughput, **the GPU performance ceiling is set by memory bandwidth**, not compute.  
+- Compared to the optimized CPU FFTW (4 threads, 8.7 s at 1024²), the GPU achieves an overall **≈17× speedup**, illustrating how GPU-accelerated FFTs  
+  shift the bottleneck entirely to O(N) memory-bound stages.

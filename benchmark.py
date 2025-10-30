@@ -60,6 +60,7 @@ def run_benchmark(array_name, fft_name, threads, size, niter, enable_profile=Fal
 
     # --- initialize arrays ---
     a = xp.random.random((H, H)) + 1j * xp.random.random((H, H))
+    a = xp.asarray(a, dtype = xp.complex64)
     b = xp.empty_like(a)
 
     def synchronize():
