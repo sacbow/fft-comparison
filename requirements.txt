@@ -1,0 +1,5 @@
+python==3.10.5
+numpy==2.2.6
+scipy==1.15.3
+pyfftw==0.15.0
+cupy==13.5.0

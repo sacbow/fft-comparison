@@ -16,7 +16,7 @@ import io
 import numpy as np
 
 from array_backend import set_array_backend, get_array_backend, current_array_backend_name
-from fft_backend import set_fft_backend, get_fft_backend
+from fft_backend import set_fft_backend, get_fft_backend, set_fftw_threads
 
 
 # ---------------------------------------------------------------------
@@ -48,9 +48,12 @@ def run_benchmark(array_name, fft_name, threads, size, niter, enable_profile=Fal
 
     # --- setup backends ---
     set_array_backend(array_name)
+    if fft_name == "fftw":
+        set_fftw_threads(threads)
     set_fft_backend(fft_name)
     xp = get_array_backend()
     fft = get_fft_backend()
+
 
     H = size
     print(f"\n[benchmark] array={array_name}, fft={fft_name}, size={H}x{H}, n_iter={niter}")

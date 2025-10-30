@@ -1,13 +1,30 @@
 """
+fft_backend.py
 Unified FFT backend interface with array_backend integration
 and plan caching for pyFFTW.
 """
 
 from __future__ import annotations
 from typing import Any, Dict, Tuple
-
 import numpy as np
 from array_backend import get_array_backend, current_array_backend_name
+
+
+# ---------------------------------------------------------------------------
+# Global thread setting for FFTW
+# ---------------------------------------------------------------------------
+
+_FFTW_THREADS = 1  # default value
+
+def set_fftw_threads(n: int):
+    """Set global thread count for FFTW backend."""
+    global _FFTW_THREADS
+    _FFTW_THREADS = max(1, int(n))
+
+def get_fftw_threads() -> int:
+    """Get global FFTW thread count."""
+    return _FFTW_THREADS
+
 
 # ---------------------------------------------------------------------------
 # Base class
@@ -39,12 +56,10 @@ class SciPyFFTBackend(FFTBackend):
         self.xp = get_array_backend()
 
     def fft2(self, x):
-        x = self.xp.asarray(x)
-        return self.sp_fft.fft2(x)
+        return self.sp_fft.fft2(self.xp.asarray(x))
 
     def ifft2(self, x):
-        x = self.xp.asarray(x)
-        return self.sp_fft.ifft2(x)
+        return self.sp_fft.ifft2(self.xp.asarray(x))
 
 
 # ---------------------------------------------------------------------------
@@ -58,31 +73,28 @@ class CuPyFFTBackend(FFTBackend):
         self.xp = get_array_backend()
 
     def fft2(self, x):
-        x = self.xp.asarray(x)
-        out = self.xp.fft.fft2(x)
-        return out
+        return self.xp.fft.fft2(self.xp.asarray(x))
 
     def ifft2(self, x):
-        x = self.xp.asarray(x)
-        out = self.xp.fft.ifft2(x)
-        return out
+        return self.xp.fft.ifft2(self.xp.asarray(x))
 
 
 # ---------------------------------------------------------------------------
-# pyFFTW backend (CPU) with plan caching
+# FFTW backend (CPU, with global thread count)
 # ---------------------------------------------------------------------------
 
 class FFTWBackend(FFTBackend):
     """
     FFT backend using pyFFTW (a Python wrapper for FFTW).
     Provides 2D FFT and IFFT operations with plan caching.
+    Thread count is taken from a global setting (set_fftw_threads()).
     """
 
-    def __init__(self, threads: int = 1, planner_effort: str = "FFTW_MEASURE"):
+    def __init__(self, planner_effort: str = "FFTW_MEASURE"):
         import pyfftw
         self.pyfftw = pyfftw
         self.xp = get_array_backend()
-        self.threads = threads
+        self.threads = get_fftw_threads()
         self.planner_effort = planner_effort
         self._plans: Dict[
             Tuple[Tuple[int, ...], Any, str],
@@ -107,14 +119,12 @@ class FFTWBackend(FFTBackend):
         return self._plans[key]
 
     def fft2(self, x):
-        x = self.xp.asarray(x)
         plan, a, b = self._get_plan(x.shape, x.dtype, "fft")
         a[:] = x
         plan()
         return b
 
     def ifft2(self, x):
-        x = self.xp.asarray(x)
         plan, a, b = self._get_plan(x.shape, x.dtype, "ifft")
         a[:] = x
         plan()
@@ -137,17 +147,11 @@ def set_fft_backend(name: str):
     name = name.lower()
     array_name = current_array_backend_name()
 
-    # === consistency check ===
     if array_name == "numpy" and name == "cupy":
-        raise RuntimeError(
-            "Cannot use CuPy FFT backend with NumPy array backend."
-        )
+        raise RuntimeError("Cannot use CuPy FFT backend with NumPy array backend.")
     if array_name == "cupy" and name in ("scipy", "fftw"):
-        raise RuntimeError(
-            "Cannot use CPU FFT backend (scipy/fftw) with CuPy array backend."
-        )
+        raise RuntimeError("Cannot use CPU FFT backend (scipy/fftw) with CuPy array backend.")
 
-    # === construct backend ===
     if name == "scipy":
         _fft_backend = SciPyFFTBackend()
     elif name == "cupy":
@@ -157,12 +161,11 @@ def set_fft_backend(name: str):
     else:
         raise ValueError(f"Unknown FFT backend: {name}")
 
-    print(f"[fft_backend] FFT backend set to: {name} (array: {array_name})")
+    print(f"[fft_backend] FFT backend set to: {name} (array: {array_name}, threads={get_fftw_threads()})")
 
 
 def get_fft_backend() -> FFTBackend:
     """Return the current FFT backend instance."""
-    global _fft_backend
     if _fft_backend is None:
         raise RuntimeError("FFT backend not set. Call set_fft_backend() first.")
     return _fft_backend
