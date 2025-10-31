@@ -144,12 +144,12 @@ Times are averages of 5 runs on the developer's laptop.
 
 ### 🧪 CuPy FFT (GPU, cuFFT, single precision)
 
-| Metric | 256×256 | 512×512 | 1024×1024 | 2048×2048 |
-|:--|--:|--:|--:|--:|
-| **Total GPU kernel time [s]** | 0.38 | 0.41 | 0.53 | 2.59 |
-| **FFT share [%]** | 39 | 56 | 89 | 82 |
-| **Element-wise share [%]** | 41 | 24 | 6 | 15 |
-| **Reduction (sum) share [%]** | 18 | 16 | 4 | 3 |
+| Metric | 256×256 | 512×512 | 1024×1024 | 2048×2048 | 4096×4096|
+|:--|--:|--:|--:|--:|--:|
+| **Total GPU kernel time [s]** | 0.38 | 0.41 | 0.53 | 2.59 | 13.25 | 
+| **FFT share [%]** | 39 | 56 | 89 | 82 | 87 | 
+| **Element-wise share [%]** | 41 | 24 | 6 | 15 | 11 | 
+| **Reduction (sum) share [%]** | 18 | 16 | 4 | 3 | 2 |
 
 **Conditions:**  
 - FFT backend: `cupy.fft` (cuFFT via CuPy)  
@@ -160,8 +160,8 @@ Times are averages of 5 runs on the developer's laptop.
 - Profiling: **CUDA event–based timing**, measuring in-GPU kernel durations only (excluding Python overhead).  
 
 **Observation:**
-- The FFT phase dominates beyond 512², reaching up to ~90 % share at 1024². This indicates cuFFT achieves near–full occupancy and efficient memory reuse.
-- The FFT share of total GPU kernel time is non-monotonic, probably due to the memory-bound nature of the element-wise operation and the internal plan switching of cuFFT.
+- FFT runtime scaling beyond 1024² follows an O(N log N)-like trend.
+- For 4096², post-processing still accounts for ≈ 13 % of runtime. This illustrates that global-memory traffic remains a non-negligible component of total cost.
 
 ---
 
