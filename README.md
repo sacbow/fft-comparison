@@ -142,32 +142,45 @@ Times are averages of 5 runs on the developer's laptop.
 
 
 
-### 🧪 CuPy FFT (GPU, cuFFT)
+### 🧪 CuPy FFT (GPU, cuFFT, single precision)
 
-| Metric | 256×256 | 512×512 | 1024×1024 |
-|:--|--:|--:|--:|
-| **Total time [s]** | 0.21 | 0.22 | 0.51 |
-| **FFT share [%]** | 61 | 62 | 26 |
-| **Element-wise share [%]** | 22 | 20 | 58 |
-| **Reduction (sum) share [%]** | 16 | 15 | 7 |
+| Metric | 256×256 | 512×512 | 1024×1024 | 2048×2048 |
+|:--|--:|--:|--:|--:|
+| **Total GPU kernel time [s]** | 0.38 | 0.41 | 0.53 | 2.59 |
+| **FFT share [%]** | 39 | 56 | 89 | 82 |
+| **Element-wise share [%]** | 41 | 24 | 6 | 15 |
+| **Reduction (sum) share [%]** | 18 | 16 | 4 | 3 |
 
 **Conditions:**  
 - FFT backend: `cupy.fft` (cuFFT via CuPy)  
 - Array backend: `cupy` (GPU, single precision `complex64`)  
-- Device: NVIDIA RTX 4060 Laptop GPU (CUDA 12.9, driver 576.02)  
+- Device: NVIDIA RTX 4060 Laptop GPU (8 GB VRAM)  
+- CUDA Toolkit: 12.9 Driver: 576.02  
 - Iterations: 1000  
+- Profiling: **CUDA event–based timing**, measuring in-GPU kernel durations only (excluding Python overhead).  
 
 **Observation:**
-- At 1024², FFT time increases slightly (0.13 s) but remains just **25 % of total runtime**, while the element-wise operation now dominates (**~60 %**) due to global memory traffic.  
-- These results clearly demonstrate that once FFT kernels reach full throughput, **the GPU performance ceiling is set by memory bandwidth**, not compute.  
-- Compared to the optimized CPU FFTW (4 threads, 8.7 s at 1024²), the GPU achieves an overall **≈17× speedup**, illustrating how GPU-accelerated FFTs  
-  shift the bottleneck entirely to O(N) memory-bound stages.
+- The FFT phase dominates beyond 512², reaching up to ~90 % share at 1024². This indicates cuFFT achieves near–full occupancy and efficient memory reuse.
+- The FFT share of total GPU kernel time is non-monotonic, probably due to the memory-bound nature of the element-wise operation and the internal plan switching of cuFFT.
+
+---
+
+### ⚙️ Profiling methodology
+
+Unlike the CPU measurements—which used Python’s `cProfile` to capture *host-side* function runtimes—the GPU benchmarks employ **CUDA events** to record the actual device-side execution time of each kernel.  
+
+```text
+[GPU Event-based Timing (averaged over iterations)]
+Total      : 0.4134 s  (0.413 ms/iter)
+FFT phase  : 0.231 s (55.8 %)
+Elementwise: 0.100 s (24.2 %)
+Reduction  : 0.065 s (15.8 %)
+```
+
 
 ---
 
 ### 💡 Practical note
 
-These benchmarks show that **FFT itself is rarely the bottleneck** in GPU computing. Instead, **memory-bound O(N)** stages — such as element-wise arithmetic or reductions — dominate total runtime once FFT throughput saturates.
-
-In practice, this limitation can be mitigated through **kernel fusion**, which reduces redundant global-memory traffic by combining multiple operations into a single CUDA kernel.  
-For FFT workloads, NVIDIA’s [**cuFFT Callback API**](https://nw.tsuda.ac.jp/lec/cuda/doc_v9_0/pdf/CUFFT_Library.pdf) provides a built-in mechanism for this purpose.
+When FFT performance is no longer the limiting factor, techniques such as **kernel fusion** become crucial for mitigating memory traffic.  
+For FFT-heavy pipelines, NVIDIA’s [**cuFFT Callback API**](https://developer.nvidia.com/blog/faster-fft-processing-using-cufft-callbacks/) allows such pre/post-processing to be integrated directly into the cuFFT kernel, reducing global-memory overhead without additional kernel launches.

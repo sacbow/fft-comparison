@@ -20,7 +20,7 @@ from fft_backend import set_fft_backend, get_fft_backend, set_fftw_threads
 
 
 # ---------------------------------------------------------------------
-# Computation kernels
+# Computation kernels (with fusion for CuPy)
 # ---------------------------------------------------------------------
 
 def fft_forward_and_backward(fft_backend, a):
@@ -30,13 +30,19 @@ def fft_forward_and_backward(fft_backend, a):
 
 
 def elementwise_distance(xp, a, b):
-    """Compute |a - b|^2 elementwise and return a new array."""
-    return xp.abs(a - b) ** 2
+    """Compute element-wise squared distance: |a - b|^2.
+    Uses kernel fusion when available (e.g., CuPy)."""
+    if current_array_backend_name() == "cupy":
+        @xp.fuse(kernel_name="fused_distance")
+        def fused_distance(a, b):
+            return xp.abs(a - b) ** 2
+        return fused_distance(a, b)
+    else:
+        return np.abs(a - b) ** 2
 
 
 def reduce_sum(xp, a):
-    """Sum all elements and return scalar."""
-    return xp.sum(a)
+        return xp.sum(a)
 
 
 # ---------------------------------------------------------------------
@@ -54,13 +60,12 @@ def run_benchmark(array_name, fft_name, threads, size, niter, enable_profile=Fal
     xp = get_array_backend()
     fft = get_fft_backend()
 
-
     H = size
     print(f"\n[benchmark] array={array_name}, fft={fft_name}, size={H}x{H}, n_iter={niter}")
 
     # --- initialize arrays ---
     a = xp.random.random((H, H)) + 1j * xp.random.random((H, H))
-    a = xp.asarray(a, dtype = xp.complex64)
+    a = xp.asarray(a, dtype=xp.complex64)
     b = xp.empty_like(a)
 
     def synchronize():
@@ -75,31 +80,74 @@ def run_benchmark(array_name, fft_name, threads, size, niter, enable_profile=Fal
         s = reduce_sum(xp, c)
         return s
 
-    # --- profile or plain timing ---
+    # -----------------------------------------------------------------
+    # Profiling
+    # -----------------------------------------------------------------
     if enable_profile:
-        profiler = cProfile.Profile()
-        profiler.enable()
-        for _ in range(niter):
-            _ = iteration()
-        synchronize()
-        profiler.disable()
+        if current_array_backend_name() == "cupy":
+            # GPU event-based profiling
+            events = [xp.cuda.Event() for _ in range(8)]  # total + each phase
+            total_times, fft_times, elem_times, red_times = [], [], [], []
 
-        s_io = io.StringIO()
-        ps = pstats.Stats(profiler, stream=s_io).sort_stats("cumtime")
-        ps.print_stats(20)
-        print("\n--- cProfile summary (top 20 cumulative) ---")
-        print(s_io.getvalue())
+            for _ in range(niter):
+                events[0].record()  # total start
 
+                # --- FFT phase ---
+                events[1].record()
+                b = fft_forward_and_backward(fft, a)
+                events[2].record()
+
+                # --- Elementwise (fused) ---
+                events[3].record()
+                c = elementwise_distance(xp, a, b)
+                events[4].record()
+
+                # --- Reduction (fused sum) ---
+                events[5].record()
+                s = reduce_sum(xp, c)
+                events[6].record()
+
+                events[6].synchronize()
+
+                total_times.append(xp.cuda.get_elapsed_time(events[0], events[6]))
+                fft_times.append(xp.cuda.get_elapsed_time(events[1], events[2]))
+                elem_times.append(xp.cuda.get_elapsed_time(events[3], events[4]))
+                red_times.append(xp.cuda.get_elapsed_time(events[5], events[6]))
+
+            print("\n--- GPU Event-based Timing (averaged over iterations) ---")
+            print(f"Total      : {np.sum(total_times)/1000:.4f} s  ({np.mean(total_times):.3f} ms/iter)")
+            print(f"FFT phase  : {np.sum(fft_times)/1000:.3f} s ({100 * np.sum(fft_times) / np.sum(total_times):.1f} %)")
+            print(f"Elementwise: {np.sum(elem_times)/1000:.3f} s ({100 * np.sum(elem_times) / np.sum(total_times):.1f} %)")
+            print(f"Reduction  : {np.sum(red_times)/1000:.3f} s ({100 * np.sum(red_times) / np.sum(total_times):.1f} %)")
+
+        else:
+            # CPU profiling with cProfile
+            profiler = cProfile.Profile()
+            profiler.enable()
+            for _ in range(niter):
+                _ = iteration()
+            synchronize()
+            profiler.disable()
+
+            s_io = io.StringIO()
+            ps = pstats.Stats(profiler, stream=s_io).sort_stats("cumtime")
+            ps.print_stats(20)
+            print("\n--- cProfile summary (top 20 cumulative) ---")
+            print(s_io.getvalue())
+
+    # -----------------------------------------------------------------
+    # No profiling: simple total timing
+    # -----------------------------------------------------------------
     else:
         t0 = time.perf_counter()
         for _ in range(niter):
             _ = iteration()
         synchronize()
         total_time = time.perf_counter() - t0
-        print("\n[Results]")
-        print(f"Total execution time : {total_time:.4f} s  ({total_time / niter * 1e3:.3f} ms/iter)")
+        print(f"\n[Total execution time] {total_time:.4f} s "
+              f"({total_time / niter * 1e3:.3f} ms/iter)")
 
-    # prevent lazy evaluation (ensure reduction result computed)
+    # ensure computation completed
     s = iteration()
     _ = float(s.get()) if array_name == "cupy" else float(s)
 
@@ -121,7 +169,7 @@ def main():
     parser.add_argument("--niter", type=int, default=1000,
                         help="Number of iterations")
     parser.add_argument("--profile", action="store_true",
-                        help="Enable cProfile profiling for the whole loop")
+                        help="Enable detailed profiling (cProfile for CPU, CUDA events for GPU)")
     args = parser.parse_args()
 
     run_benchmark(
